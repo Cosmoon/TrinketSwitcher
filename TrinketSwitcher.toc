@@ -1,0 +1,20 @@
+## Interface: 16001
+## Title: TrinketSwitcher
+## Notes: Automatically switches trinkets with an options panel and clickable trinket slots
+## Author: Cosmoon
+## Version: 1.0.0
+## OptionalDeps: LibDataBroker-1.1, LibDBIcon-1.0
+## SavedVariablesPerCharacter: TrinketSwitcherCharDB
+## LoadSavedVariablesFirst: 1
+## IconTexture: Interface\AddOns\TrinketSwitcher\Media\TrinketSwitcher_Logo.blp
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\lib.xml
+Mirror.lua
+TrinketSwitcher.lua
+Modules\Minimap.lua
+Modules\Tooltips.lua
+Modules\Profiles.lua
+Modules\Menu.lua
+Modules\Options.lua

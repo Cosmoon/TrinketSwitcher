@@ -367,6 +367,8 @@ function ATS:UpdateMenuCooldowns()
             start, duration = GetItemCooldownSafe(btn.itemID)
         end
         if not IsSecret(start) and not IsSecret(duration) and start and duration and start > 0 and duration > 0 then
+            btn._cooldownStart = start
+            btn._cooldownDuration = duration
             btn.cooldown:SetCooldown(start, duration)
             btn.cooldown:Show()
             if TrinketSwitcherCharDB.showCooldownNumbers then
@@ -385,9 +387,15 @@ function ATS:UpdateMenuCooldowns()
                 btn.cdText:Hide()
             end
         else
+            btn._cooldownStart = nil
+            btn._cooldownDuration = nil
+            btn._lastCooldownText = nil
             btn.cooldown:Hide()
             btn.cdText:Hide()
         end
+    end
+    if self.SetCooldownTextUpdater and self.UpdateCooldownTexts and self:UpdateCooldownTexts() then
+        self:SetCooldownTextUpdater(true)
     end
 end
 

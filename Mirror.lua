@@ -216,19 +216,30 @@ if not _G.CreateFrame then return end
 
 local watcher = CreateFrame("Frame")
 local elapsedSince = 0
+local FLUSH_INTERVAL = 30
+local flushTicker
 
-watcher:SetScript("OnUpdate", function(_, elapsed)
-    elapsedSince = elapsedSince + elapsed
-    if elapsedSince < 5 then return end
-    elapsedSince = 0
-    Mirror:Flush()
-end)
+local function StartPeriodicFlush()
+    if flushTicker then return end
+    if C_Timer and C_Timer.NewTicker then
+        flushTicker = C_Timer.NewTicker(FLUSH_INTERVAL, function() Mirror:Flush() end)
+        return
+    end
+
+    watcher:SetScript("OnUpdate", function(_, elapsed)
+        elapsedSince = elapsedSince + elapsed
+        if elapsedSince < FLUSH_INTERVAL then return end
+        elapsedSince = 0
+        Mirror:Flush()
+    end)
+end
 
 watcher:SetScript("OnEvent", function() Mirror:Flush() end)
 
 function Mirror:Watch(tbl, defaults)
     watched, watchedDefaults = tbl, defaults
     watcher:RegisterEvent("PLAYER_LOGOUT")
+    StartPeriodicFlush()
     self:Flush()
 end
 

@@ -2,6 +2,15 @@
 
 All notable changes to TrinketSwitcher are documented here.
 
+## v1.0.1 - 2026-10-02
+
+### Changed
+- Reduced idle and cooldown CPU usage by replacing the frequent full button refresh loop with event-driven updates.
+- Limited cooldown countdown updates to visible active cooldown text instead of refreshing all trinket button state every tenth of a second.
+- Filtered aura handling to player aura changes before checking mount state.
+- Cached trinket use-spell lookups during auto-switch checks.
+- Reduced WoW Forever settings mirror flush frequency and use timer-based flushing when available.
+
 ## v1.0.0 - 2026-10-01
 
 Initial stable release of TrinketSwitcher.

@@ -51,6 +51,13 @@ local function GetCooldownRemaining(start, duration)
     return remaining
 end
 
+local function FormatCooldownText(remaining)
+    if remaining >= 60 then
+        return string.format("%d m", math.ceil(remaining / 60))
+    end
+    return tostring(math.ceil(remaining))
+end
+
 function ATS:GetItemCooldownSafe(itemID)
     return GetItemCooldownSafe(itemID)
 end
@@ -496,15 +503,35 @@ local function QueueIndex(slot, itemID)
 end
 
 -- Helper: does an item have a usable effect?
+local function GetItemUseSpellName(itemID)
+    if not itemID then return nil end
+    ATS.itemUseSpellCache = ATS.itemUseSpellCache or {}
+
+    local cached = ATS.itemUseSpellCache[itemID]
+    if cached ~= nil then
+        return cached ~= false and cached or nil
+    end
+
+    local spellName = ATS:GetItemSpellSafe(itemID)
+    if spellName then
+        ATS.itemUseSpellCache[itemID] = spellName
+        return spellName
+    end
+
+    if ATS:GetItemInfoSafe(itemID) then
+        ATS.itemUseSpellCache[itemID] = false
+    end
+
+    return nil
+end
+
 local function ItemHasUse(itemID)
-    if not itemID then return false end
-    local useName = ATS:GetItemSpellSafe(itemID)
-    return useName ~= nil
+    return GetItemUseSpellName(itemID) ~= nil
 end
 
 local function IsItemEffectActive(itemID)
     if not itemID then return false end
-    local spellName = ATS:GetItemSpellSafe(itemID)
+    local spellName = GetItemUseSpellName(itemID)
     if not spellName then return false end
 
     if AuraUtil and AuraUtil.FindAuraByName then
@@ -736,9 +763,125 @@ function ATS:PerformCheck()
     self:UpdateButtons()
 end
 
+function ATS:QueueButtonUpdate(delay)
+    if not self.buttons or self._buttonUpdateQueued then return end
+    self._buttonUpdateQueued = true
+    delay = delay or 0.05
+
+    local function update()
+        if not ATS then return end
+        ATS._buttonUpdateQueued = nil
+        ATS:UpdateButtons()
+    end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(delay, update)
+    else
+        update()
+    end
+end
+
+local function UpdateCooldownText(button)
+    if not button or not button.cdText then return false end
+    if not TrinketSwitcherCharDB.showCooldownNumbers then
+        button.cdText:Hide()
+        button._lastCooldownText = nil
+        return false
+    end
+
+    local start, duration = button._cooldownStart, button._cooldownDuration
+    if not IsActiveCooldown(start, duration) then
+        button.cdText:Hide()
+        button._lastCooldownText = nil
+        return false
+    end
+
+    local remaining = start + duration - GetTime()
+    if remaining <= 0 then
+        button.cdText:Hide()
+        button._lastCooldownText = nil
+        return false
+    end
+
+    local text = FormatCooldownText(remaining)
+    if button._lastCooldownText ~= text then
+        button.cdText:SetText(text)
+        button._lastCooldownText = text
+    end
+    button.cdText:Show()
+    return true
+end
+
+function ATS:UpdateCooldownTexts()
+    local hasActiveText = false
+
+    for _, button in pairs(self.buttons or {}) do
+        hasActiveText = UpdateCooldownText(button) or hasActiveText
+    end
+
+    if self.menu and self.menu:IsShown() and self.menu.icons then
+        for _, button in ipairs(self.menu.icons) do
+            hasActiveText = UpdateCooldownText(button) or hasActiveText
+        end
+    end
+
+    return hasActiveText
+end
+
+function ATS:SetCooldownTextUpdater(active)
+    if not TrinketSwitcherCharDB or TrinketSwitcherCharDB.showCooldownNumbers == false then
+        active = false
+    end
+
+    if active and self._cooldownTextUpdaterActive then return end
+    if not active and not self._cooldownTextUpdaterActive then return end
+
+    self._cooldownTextUpdaterActive = active and true or false
+    self._cooldownTextElapsed = 0
+    self._cooldownTextFrame = self._cooldownTextFrame or CreateFrame("Frame")
+
+    if active then
+        self._cooldownTextFrame:SetScript("OnUpdate", function(_, elapsed)
+            ATS._cooldownTextElapsed = (ATS._cooldownTextElapsed or 0) + elapsed
+            if ATS._cooldownTextElapsed < 0.5 then return end
+            ATS._cooldownTextElapsed = 0
+            if not ATS:UpdateCooldownTexts() then
+                ATS:SetCooldownTextUpdater(false)
+            end
+        end)
+    else
+        self._cooldownTextFrame:SetScript("OnUpdate", nil)
+    end
+end
+
+function ATS:StartAutoCheckTicker()
+    if self._autoCheckTicker and self._autoCheckTicker.Cancel then
+        self._autoCheckTicker:Cancel()
+    end
+
+    if C_Timer and C_Timer.NewTicker then
+        self._autoCheckTicker = C_Timer.NewTicker(1, function()
+            if ATS and ATS.PerformCheck then
+                ATS:PerformCheck()
+            end
+        end)
+        return
+    end
+
+    self.elapsed = 0
+    self:SetScript("OnUpdate", function(_, elapsed)
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed > 1 then
+            self.elapsed = 0
+            self:PerformCheck()
+        end
+    end)
+end
+
 -- Update the icons on the slot buttons
 function ATS:UpdateButtons()
     if not self.buttons then return end
+    local hasActiveCooldownText = false
     for slot, button in pairs(self.buttons) do
         local itemID = GetInventoryItemID("player", slot)
         local texture = GetInventoryItemTexture("player", slot)
@@ -782,39 +925,31 @@ function ATS:UpdateButtons()
         if itemID then
             local fallbackStart, fallbackDuration, fallbackEnable = GetInventoryItemCooldownSafe("player", slot)
             local start, duration, _, sourceItemID = self:GetDisplayItemCooldown(itemID, fallbackStart, fallbackDuration, fallbackEnable)
+            button._cooldownStart = start
+            button._cooldownDuration = duration
             TrackItemCooldown(sourceItemID or itemID, start, duration)
             if IsActiveCooldown(start, duration) then
                 button.cooldown:SetCooldown(start, duration)
                 button.cooldown:Show()
-                if TrinketSwitcherCharDB.showCooldownNumbers then
-                    local remaining = start + duration - GetTime()
-                    if remaining > 0 then
-                        if remaining >= 60 then
-                            button.cdText:SetText(string.format("%d m", math.ceil(remaining / 60)))
-                        else
-                            button.cdText:SetText(math.ceil(remaining))
-                        end
-                        button.cdText:Show()
-                    else
-                        button.cdText:Hide()
-                    end
-                else
-                    button.cdText:Hide()
-                end
+                hasActiveCooldownText = UpdateCooldownText(button) or hasActiveCooldownText
             else
                 button.cooldown:Hide()
                 button.cdText:Hide()
+                button._lastCooldownText = nil
             end
         else
             button.cooldown:Hide()
             button.cdText:Hide()
+            button._cooldownStart = nil
+            button._cooldownDuration = nil
+            button._lastCooldownText = nil
         end
     end
     if self.menu and self.menu:IsShown() then
         self:UpdateMenuCooldowns()
+        hasActiveCooldownText = self:UpdateCooldownTexts() or hasActiveCooldownText
     end
-    -- Keep minimap icon in sync with slot 13
-    if self.UpdateMinimapIcon then self:UpdateMinimapIcon() end
+    self:SetCooldownTextUpdater(hasActiveCooldownText)
 end
 
 -- Create the two slot buttons
@@ -1020,23 +1155,10 @@ function ATS:PLAYER_LOGIN()
             end
         end)
     end
-    self.elapsed = 0
-    self.cdElapsed = 0
     self.mountAutoModified = false
     self.prevAutoSwitch = nil
     self.isMounted = false
-    self:SetScript("OnUpdate", function(_, e)
-        self.elapsed = self.elapsed + e
-        self.cdElapsed = self.cdElapsed + e
-        if self.elapsed > 1 then
-            self.elapsed = 0
-            self:PerformCheck()
-        end
-        if self.cdElapsed > 0.1 then
-            self.cdElapsed = 0
-            self:UpdateButtons()
-        end
-    end)
+    self:StartAutoCheckTicker()
     -- Clear tooltip context if tooltip is hidden by any external cause
     if GameTooltip and GameTooltip.HookScript then
         GameTooltip:HookScript("OnHide", function()
@@ -1113,7 +1235,14 @@ for _, event in ipairs({
     "PLAYER_LOGIN",
     "PLAYER_LOGOUT",
     "PLAYER_REGEN_ENABLED",
+    "PLAYER_REGEN_DISABLED",
     "UNIT_AURA",
+    "PLAYER_EQUIPMENT_CHANGED",
+    "BAG_UPDATE_DELAYED",
+    "BAG_UPDATE_COOLDOWN",
+    "ACTIONBAR_UPDATE_COOLDOWN",
+    "SPELL_UPDATE_COOLDOWN",
+    "ITEM_LOCK_CHANGED",
     "PLAYER_MOUNT_DISPLAY_CHANGED",
     "PLAYER_ENTERING_WORLD",
     "ZONE_CHANGED",
@@ -1133,7 +1262,15 @@ end
 ATS:SetScript("OnEvent", function(self, event, ...)
     if event == "PLAYER_REGEN_ENABLED" then
         self:PerformCheck()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        self:QueueButtonUpdate()
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "BAG_UPDATE_DELAYED" or event == "ITEM_LOCK_CHANGED" then
+        self:QueueButtonUpdate()
+    elseif event == "BAG_UPDATE_COOLDOWN" or event == "ACTIONBAR_UPDATE_COOLDOWN" or event == "SPELL_UPDATE_COOLDOWN" then
+        self:QueueButtonUpdate()
     elseif event == "UNIT_AURA" then
+        local unit = ...
+        if unit and unit ~= "player" then return end
         -- React to mount state changes via aura changes
         self:UpdateMountState()
     elseif event == "PLAYER_MOUNT_DISPLAY_CHANGED" then

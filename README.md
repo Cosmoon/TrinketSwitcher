@@ -61,4 +61,4 @@ In Options, scroll to **Trinket ready alerts**. Both new features are off by def
 - Enable the ready sound, choose Chime, Bell, or Pulse, and use Preview to listen. Alert volume adjusts only these bundled sounds, in 10% steps; WoW master volume still applies.
 - Alerts fire once when an equipped trinket cooldown finishes, including shared or equip cooldowns. Login, newly equipped ready items, and the GCD do not trigger alerts. Simultaneous readiness produces one sound.
 
-Macro glow discovery supports Blizzard, Bartender4, and Dominos action buttons. New buttons are discovered within two seconds.
+Macro glow discovery supports Blizzard, Bartender4, and Dominos action buttons. Readiness checks run on relevant game events and scheduled cooldown completion; macro lookups are cached between action-bar and macro changes.

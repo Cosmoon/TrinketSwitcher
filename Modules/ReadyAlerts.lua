@@ -42,7 +42,7 @@ local actionButtonGroups = {
     {"DominosActionButton", 180},
 }
 
-local function ButtonMacroID(button)
+local function ButtonMacroID(button, cache)
     local kind, action
     if button.GetAction then
         -- LibActionButton (Bartender) supports direct macros as well as slots.
@@ -54,6 +54,7 @@ local function ButtonMacroID(button)
     if issecretvalue and (issecretvalue(kind) or issecretvalue(action)) then return end
     if kind == "action" and type(action) == "number" and action > 0 then
         local actionSlot = action
+        if cache[actionSlot] ~= nil then return cache[actionSlot] or nil end
         kind, action = GetActionInfo(actionSlot)
         if issecretvalue and issecretvalue(kind) then return end
         if kind == "macro" then
@@ -61,13 +62,34 @@ local function ButtonMacroID(button)
             local name = GetActionText(actionSlot)
             if issecretvalue and issecretvalue(name) then return end
             action = name and GetMacroIndexByName(name) or nil
-            if action == 0 then return end
+            if action == 0 then action = nil end
+        end
+        if not (issecretvalue and (issecretvalue(kind) or issecretvalue(action))) then
+            cache[actionSlot] = (kind == "macro" and action) or false
         end
     end
     if issecretvalue and (issecretvalue(kind) or issecretvalue(action)) then return end
     if kind == "macro" and (type(action) == "number" or type(action) == "string") then
         return action
     end
+end
+
+function ATS:QueueReadyAlerts(delay, discover)
+    local db = TrinketSwitcherCharDB
+    if not db or not (db.macroReadyGlowEnabled or db.readySoundEnabled) then return end
+    self.readyDiscoverPending = self.readyDiscoverPending or discover
+    local due = GetTime() + (delay or 0.1)
+    if self.readyAlertTimer and self.readyAlertDue <= due then return end
+    if self.readyAlertTimer then self.readyAlertTimer:Cancel() end
+    self.readyAlertDue = due
+    self.readyAlertTimer = C_Timer.NewTimer(math.max(0, due - GetTime()), function()
+        self.readyAlertTimer, self.readyAlertDue = nil, nil
+        if self.readyDiscoverPending then
+            self.readyDiscoverPending = nil
+            if TrinketSwitcherCharDB.macroReadyGlowEnabled then self:RefreshMacroButtons() end
+        end
+        self:UpdateReadyAlerts()
+    end)
 end
 
 function ATS:RefreshMacroButtons()
@@ -87,8 +109,20 @@ end
 function ATS:UpdateReadyAlerts()
     local db = TrinketSwitcherCharDB
     if not db then return end
+    if self.readyAlertTimer then self.readyAlertTimer:Cancel() end
+    self.readyAlertTimer, self.readyAlertDue = nil, nil
+    if not (db.macroReadyGlowEnabled or db.readySoundEnabled) then
+        for button in pairs(self.macroButtons or {}) do
+            if not button:IsForbidden() and button.tsMacroReadyGlowColor then
+                glowLibrary.PixelGlow_Stop(button, glowKey)
+                button.tsMacroReadyGlowColor = nil
+            end
+        end
+        self.readyAlertState = nil
+        return
+    end
     self.readyAlertState = self.readyAlertState or {}
-    local ready, alert = {}, false
+    local ready, alert, nextEnd = {}, false, nil
     for _, slot in ipairs(slots) do
         local itemID = GetInventoryItemID("player", slot)
         local start, duration, enabled
@@ -122,6 +156,7 @@ function ATS:UpdateReadyAlerts()
                 alert = true
             end
             self.readyAlertState[slot] = {itemID = itemID, cooling = cooling, endsAt = endsAt}
+            if endsAt and (not nextEnd or endsAt < nextEnd) then nextEnd = endsAt end
         else
             self.readyAlertState[slot] = nil
         end
@@ -129,7 +164,12 @@ function ATS:UpdateReadyAlerts()
     -- Coalesce shared cooldown completion into a single alert.
     if alert then self:PlayReadySound() end
 
-    local macros = {}
+    if nextEnd then self:QueueReadyAlerts(math.max(0.05, nextEnd - GetTime() + 0.05)) end
+    self.readyMacroCache = self.readyMacroCache or {}
+    self.readyActionCache = self.readyActionCache or {}
+    local macros = self.readyMacroCache
+    local color = db.colors.macroReadyGlow
+    local width = math.max(1, math.min(10, math.floor((tonumber(db.macroReadyGlowWidth) or 2) + 0.5)))
     for button in pairs(self.macroButtons or {}) do
         -- A previously discovered button can become forbidden later.
         if button:IsForbidden() then
@@ -137,7 +177,7 @@ function ATS:UpdateReadyAlerts()
         else
             local show = false
             if db.macroReadyGlowEnabled and button:IsVisible() then
-                local id = ButtonMacroID(button)
+                local id = ButtonMacroID(button, self.readyActionCache)
                 if id then
                     if not macros[id] then macros[id] = MacroSlots(GetMacroBody(id)) end
                     for slot in pairs(macros[id]) do
@@ -145,8 +185,6 @@ function ATS:UpdateReadyAlerts()
                     end
                 end
             end
-            local color = db.colors.macroReadyGlow
-            local width = math.max(1, math.min(10, math.floor((tonumber(db.macroReadyGlowWidth) or 2) + 0.5)))
             local previous = button.tsMacroReadyGlowColor
             if show then
                 if not previous or previous.r ~= color.r or previous.g ~= color.g or previous.b ~= color.b or previous.width ~= width then
@@ -167,15 +205,27 @@ function ATS:StartReadyAlerts()
     if self.readyAlertFrame then return end
     local frame = CreateFrame("Frame")
     self.readyAlertFrame = frame
-    local elapsed, scanElapsed = 0, 2
-    frame:SetScript("OnUpdate", function(_, delta)
-        elapsed, scanElapsed = elapsed + delta, scanElapsed + delta
-        if elapsed < 0.1 then return end
-        elapsed = 0
-        if scanElapsed >= 2 and TrinketSwitcherCharDB.macroReadyGlowEnabled then
-            scanElapsed = 0
-            ATS:RefreshMacroButtons()
+    frame:SetScript("OnEvent", function(_, event, arg)
+        if event == "PLAYER_EQUIPMENT_CHANGED" and arg ~= 13 and arg ~= 14 then return end
+        if event == "UPDATE_MACROS" or event == "PLAYER_ENTERING_WORLD" then
+            self.readyMacroCache, self.readyActionCache = nil, nil
+        elseif event == "ACTIONBAR_SLOT_CHANGED" then
+            if arg and arg ~= 0 and self.readyActionCache then
+                self.readyActionCache[arg] = nil
+            else
+                self.readyActionCache = nil
+            end
         end
-        ATS:UpdateReadyAlerts()
+        self:QueueReadyAlerts(0.1, event == "PLAYER_ENTERING_WORLD" or event == "ADDON_LOADED")
     end)
+    for _, event in ipairs({
+        "PLAYER_ENTERING_WORLD", "ADDON_LOADED", "PLAYER_EQUIPMENT_CHANGED",
+        "ACTIONBAR_UPDATE_COOLDOWN", "BAG_UPDATE_COOLDOWN", "ACTIONBAR_SLOT_CHANGED",
+        "ACTIONBAR_PAGE_CHANGED", "UPDATE_BONUS_ACTIONBAR", "UPDATE_SHAPESHIFT_FORM",
+        "UPDATE_OVERRIDE_ACTIONBAR", "UPDATE_VEHICLE_ACTIONBAR", "UPDATE_MACROS",
+        "PLAYER_SPECIALIZATION_CHANGED", "PLAYER_REGEN_ENABLED", "PLAYER_REGEN_DISABLED",
+    }) do
+        pcall(frame.RegisterEvent, frame, event)
+    end
+    self:QueueReadyAlerts(0, true)
 end

@@ -55,6 +55,7 @@ function ATS:CreateOptions()
             end
             if key == "readySoundEnabled" then
                 ATS.readyAlertState = nil
+                ATS:UpdateReadyAlerts()
             end
             if key == "readyGlowEnabled" then
                 if ATS.UpdateButtons then ATS:UpdateButtons() end

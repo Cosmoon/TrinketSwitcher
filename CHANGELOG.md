@@ -2,6 +2,12 @@
 
 All notable changes to TrinketSwitcher are documented here.
 
+## v1.0.3 - 2026-10-10
+
+### Changed
+- Reduced ready-alert CPU usage by replacing frequent polling with event-driven updates and scheduled cooldown completion checks.
+- Cached macro lookups, combined bursts of game events into one update, and stopped readiness checks when both alerts are disabled.
+
 ## v1.0.2 - 2026-10-10
 
 ### Added

@@ -268,6 +268,11 @@ EnsureDB = function()
     db.menuOnlyOutOfCombat = db.menuOnlyOutOfCombat ~= false
     db.autoSwitch = db.autoSwitch ~= false
     db.readyGlowEnabled = db.readyGlowEnabled ~= false
+    db.macroReadyGlowEnabled = db.macroReadyGlowEnabled == true
+    db.macroReadyGlowWidth = math.max(1, math.min(10, math.floor((tonumber(db.macroReadyGlowWidth) or 2) + 0.5)))
+    db.readySoundEnabled = db.readySoundEnabled == true
+    db.readySound = db.readySound or "Chime"
+    db.readySoundVolume = math.max(10, math.min(100, tonumber(db.readySoundVolume) or 70))
 
     if db.showCooldowns ~= nil and db.showCooldownNumbers == nil then
         db.showCooldownNumbers = db.showCooldowns
@@ -292,6 +297,7 @@ EnsureDB = function()
     db.colors.glow   = db.colors.glow   or { r = 1, g = 1, b = 0 }
     db.colors.manualBadge = db.colors.manualBadge or { r = 1, g = 1, b = 1 }
     db.colors.readyGlow = db.colors.readyGlow or { r = 1, g = 1, b = 1 }
+    db.colors.macroReadyGlow = db.colors.macroReadyGlow or { r = 1, g = 0.82, b = 0 }
 
     db.buttonPos = NormalizePoint(db.buttonPos, { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0 })
     db.optionsPos = NormalizePoint(db.optionsPos, { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0 })
@@ -1159,6 +1165,7 @@ function ATS:PLAYER_LOGIN()
     self.prevAutoSwitch = nil
     self.isMounted = false
     self:StartAutoCheckTicker()
+    self:StartReadyAlerts()
     -- Clear tooltip context if tooltip is hidden by any external cause
     if GameTooltip and GameTooltip.HookScript then
         GameTooltip:HookScript("OnHide", function()

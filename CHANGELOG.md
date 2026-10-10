@@ -2,6 +2,12 @@
 
 All notable changes to TrinketSwitcher are documented here.
 
+## v1.0.2 - 2026-10-10
+
+### Added
+- Macro button ready glow for action-bar macros using trinket slots 13 or 14.
+- Audio alerts when an equipped trinket becomes ready.
+
 ## v1.0.1 - 2026-10-02
 
 ### Changed

@@ -49,6 +49,13 @@ function ATS:CreateOptions()
             end
             if key == "largeNumbers" then ATS:UpdateCooldownFont() end
             if key == "lockWindows" then ATS:UpdateLockState() end
+            if key == "macroReadyGlowEnabled" then
+                ATS:RefreshMacroButtons()
+                ATS:UpdateReadyAlerts()
+            end
+            if key == "readySoundEnabled" then
+                ATS.readyAlertState = nil
+            end
             if key == "readyGlowEnabled" then
                 if ATS.UpdateButtons then ATS:UpdateButtons() end
             end
@@ -280,17 +287,20 @@ function ATS:CreateOptions()
 
         swatch:SetScript("OnClick", function()
             local c = db.colors[key]
-            local function setColor(restore)
-                local r, g, b
-                if restore then
-                    r, g, b = unpack(restore)
-                else
-                    r, g, b = ColorPickerFrame:GetColorRGB()
-                end
+            local originalR, originalG, originalB = c.r, c.g, c.b
+            local function applyColor(r, g, b)
                 c.r, c.g, c.b = r, g, b
                 Update()
                 ATS:ApplyColorSettings()
                 if ATS.UpdateButtons then ATS:UpdateButtons() end
+                if ATS.UpdateReadyAlerts then ATS:UpdateReadyAlerts() end
+            end
+            local function setColor()
+                applyColor(ColorPickerFrame:GetColorRGB())
+            end
+            local function cancelColor()
+                -- Picker versions use different previousValues table formats.
+                applyColor(originalR, originalG, originalB)
             end
             if ColorPickerFrame.SetupColorPickerAndShow then
                 ColorPickerFrame:SetupColorPickerAndShow({
@@ -300,10 +310,10 @@ function ATS:CreateOptions()
                     hasOpacity = false,
                     previousValues = {c.r, c.g, c.b},
                     swatchFunc = setColor,
-                    cancelFunc = setColor,
+                    cancelFunc = cancelColor,
                 })
             else
-                ColorPickerFrame.func, ColorPickerFrame.swatchFunc, ColorPickerFrame.cancelFunc = setColor, setColor, setColor
+                ColorPickerFrame.func, ColorPickerFrame.swatchFunc, ColorPickerFrame.cancelFunc = setColor, setColor, cancelColor
                 ColorPickerFrame.hasOpacity = false
                 ColorPickerFrame.previousValues = {c.r, c.g, c.b}
                 ColorPickerFrame:SetColorRGB(c.r, c.g, c.b)
@@ -314,6 +324,74 @@ function ATS:CreateOptions()
         Update()
         return swatch
     end
+
+    local alertBox, aHeader = CreateBox("Trinket ready alerts", colorBox, -12)
+    local macroCheck = CreateCheck(alertBox, "Glow on /use 13 or /use 14 macros", "macroReadyGlowEnabled", aHeader)
+    macroCheck:ClearAllPoints()
+    macroCheck:SetPoint("TOPLEFT", aHeader, "BOTTOMLEFT", 0, -8)
+    local macroColor = CreateColorOption(alertBox, "Macro glow color", "macroReadyGlow", aHeader, -16)
+    macroColor:ClearAllPoints()
+    macroColor:SetPoint("TOPLEFT", aHeader, "BOTTOMLEFT", 370, -16)
+    local glowWidth = CreateFrame("Slider", "TSMacroReadyGlowWidth", alertBox, "OptionsSliderTemplate")
+    glowWidth:SetPoint("TOPLEFT", macroCheck, "BOTTOMLEFT", 8, -24)
+    glowWidth:SetWidth(200)
+    glowWidth:SetMinMaxValues(1, 10)
+    glowWidth:SetValueStep(1)
+    glowWidth:SetObeyStepOnDrag(true)
+    EnsureSliderTrack(glowWidth)
+    glowWidth:SetValue(db.macroReadyGlowWidth)
+    _G[glowWidth:GetName() .. "Low"]:SetText("1 px")
+    _G[glowWidth:GetName() .. "High"]:SetText("10 px")
+    _G[glowWidth:GetName() .. "Text"]:SetText("Glow border width: " .. db.macroReadyGlowWidth .. " px")
+    glowWidth:SetScript("OnValueChanged", function(self, value)
+        db.macroReadyGlowWidth = math.max(1, math.min(10, math.floor(value + 0.5)))
+        _G[self:GetName() .. "Text"]:SetText("Glow border width: " .. db.macroReadyGlowWidth .. " px")
+        ATS:UpdateReadyAlerts()
+    end)
+    local soundCheck = CreateCheck(alertBox, "Play sound when a trinket becomes ready", "readySoundEnabled", glowWidth)
+    soundCheck:ClearAllPoints()
+    soundCheck:SetPoint("TOPLEFT", glowWidth, "BOTTOMLEFT", -8, -24)
+    local soundDrop = CreateFrame("Frame", "TSReadySoundDropdown", alertBox, "UIDropDownMenuTemplate")
+    soundDrop:SetPoint("TOPLEFT", soundCheck, "BOTTOMLEFT", -16, -8)
+    UIDropDownMenu_SetWidth(soundDrop, 110)
+    UIDropDownMenu_Initialize(soundDrop, function()
+        for _, name in ipairs(ATS.readySounds) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text, info.value = name, name
+            info.checked = db.readySound == name
+            info.func = function()
+                db.readySound = name
+                UIDropDownMenu_SetSelectedValue(soundDrop, name)
+                ATS:PlayReadySound()
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+    UIDropDownMenu_SetSelectedValue(soundDrop, db.readySound)
+    local preview = CreateFrame("Button", nil, alertBox, "UIPanelButtonTemplate")
+    preview:SetSize(80, 22)
+    preview:SetPoint("LEFT", soundDrop, "RIGHT", 8, 0)
+    preview:SetText("Preview")
+    preview:SetScript("OnClick", function() ATS:PlayReadySound() end)
+    local volume = CreateFrame("Slider", "TSReadySoundVolume", alertBox, "OptionsSliderTemplate")
+    volume:SetPoint("LEFT", preview, "RIGHT", 60, 0)
+    volume:SetWidth(180)
+    volume:SetMinMaxValues(10, 100)
+    volume:SetValueStep(10)
+    volume:SetObeyStepOnDrag(true)
+    EnsureSliderTrack(volume)
+    volume:SetValue(db.readySoundVolume)
+    _G[volume:GetName() .. "Low"]:SetText("10%")
+    _G[volume:GetName() .. "High"]:SetText("100%")
+    _G[volume:GetName() .. "Text"]:SetText("Alert volume: " .. db.readySoundVolume .. "%")
+    volume:SetScript("OnValueChanged", function(self, value)
+        db.readySoundVolume = math.floor(value / 10 + 0.5) * 10
+        _G[self:GetName() .. "Text"]:SetText("Alert volume: " .. db.readySoundVolume .. "%")
+    end)
+    local soundNote = alertBox:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    soundNote:SetPoint("TOPLEFT", soundDrop, "BOTTOMLEFT", 16, -6)
+    soundNote:SetText("Uses WoW master volume. Alerts once per cooldown; ignores the global cooldown.")
+    alertBox:SetHeight(228)
 
     -- Three columns on first row
     local c1 = CreateColorOption(colorBox, "Slot 13", "slot13", cHeader, -8)
@@ -330,7 +408,7 @@ function ATS:CreateOptions()
 
     -- Spacer below colour box to guarantee visual padding to the window edge
     local bottomSpacer = CreateFrame("Frame", nil, panel)
-    bottomSpacer:SetPoint("TOPLEFT", colorBox, "BOTTOMLEFT", 0, -16)
+    bottomSpacer:SetPoint("TOPLEFT", alertBox, "BOTTOMLEFT", 0, -16)
     bottomSpacer:SetPoint("RIGHT", panel, -16, 0)
     bottomSpacer:SetHeight(16)
 
@@ -420,10 +498,13 @@ function ATS:CreateOptions()
     close:SetPoint("TOPRIGHT", 2, 2)
 
     -- Parent the existing options panel into our window for standalone display
-    panel:SetParent(win)
+    local scroll = CreateFrame("ScrollFrame", nil, win, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOPLEFT", win, "TOPLEFT", 8, -30)
+    scroll:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -30, 8)
+    panel:SetParent(scroll)
     panel:ClearAllPoints()
-    panel:SetPoint("TOPLEFT", win, "TOPLEFT", 8, -8)
-    panel:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -8, 8)
+    panel:SetSize(782, 800)
+    scroll:SetScrollChild(panel)
     panel:Hide()
 
     -- Expose a toggle for the minimap button

@@ -53,3 +53,12 @@ Talent-based queues
 - When talents change, TrinketSwitcher automatically switches to that build's dedicated queues.
 - On first run, current queues are migrated to the current build.
 - Settings are saved per character.
+
+### Trinket ready alerts
+
+In Options, scroll to **Trinket ready alerts**. Both new features are off by default.
+- Enable macro glows for action-bar macros containing `/use 13`, `/use 14`, or both. Conditional slot-use lines are supported. A macro glows when any referenced equipped on-use trinket is ready; macro conditions are not evaluated. Choose its color beside the toggle and adjust its border width from 1–10 px (default 2 px).
+- Enable the ready sound, choose Chime, Bell, or Pulse, and use Preview to listen. Alert volume adjusts only these bundled sounds, in 10% steps; WoW master volume still applies.
+- Alerts fire once when an equipped trinket cooldown finishes, including shared or equip cooldowns. Login, newly equipped ready items, and the GCD do not trigger alerts. Simultaneous readiness produces one sound.
+
+Macro glow discovery supports Blizzard, Bartender4, and Dominos action buttons. New buttons are discovered within two seconds.

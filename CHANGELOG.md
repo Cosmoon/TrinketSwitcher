@@ -2,7 +2,7 @@
 
 All notable changes to TrinketSwitcher are documented here.
 
-## Unreleased
+## v1.0.4 - 2026-10-11
 
 ### Added
 - Added options to the trinket ready alerts.

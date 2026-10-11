@@ -269,6 +269,7 @@ EnsureDB = function()
     db.autoSwitch = db.autoSwitch ~= false
     db.readyGlowEnabled = db.readyGlowEnabled ~= false
     db.macroReadyGlowEnabled = db.macroReadyGlowEnabled == true
+    db.macroReadyGlowStyle = db.macroReadyGlowStyle == "STEADY" and "STEADY" or "MOVING"
     db.macroReadyGlowWidth = math.max(1, math.min(10, math.floor((tonumber(db.macroReadyGlowWidth) or 2) + 0.5)))
     db.readySoundEnabled = db.readySoundEnabled == true
     db.readySound = db.readySound or "Chime"
@@ -298,6 +299,12 @@ EnsureDB = function()
     db.colors.manualBadge = db.colors.manualBadge or { r = 1, g = 1, b = 1 }
     db.colors.readyGlow = db.colors.readyGlow or { r = 1, g = 1, b = 1 }
     db.colors.macroReadyGlow = db.colors.macroReadyGlow or { r = 1, g = 0.82, b = 0 }
+    db.colors.macroReadySlot13 = db.colors.macroReadySlot13 or { r = 0, g = 1, b = 0 }
+    db.colors.macroReadySlot14 = db.colors.macroReadySlot14 or { r = 0, g = 0.4, b = 1 }
+    -- Preserve the previous custom macro color for the both-ready state.
+    db.colors.macroReadyBoth = db.colors.macroReadyBoth or {
+        r = db.colors.macroReadyGlow.r, g = db.colors.macroReadyGlow.g, b = db.colors.macroReadyGlow.b,
+    }
 
     db.buttonPos = NormalizePoint(db.buttonPos, { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0 })
     db.optionsPos = NormalizePoint(db.optionsPos, { point = "CENTER", relativePoint = "CENTER", x = 0, y = 0 })

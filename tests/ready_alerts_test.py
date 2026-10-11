@@ -7,7 +7,7 @@ for path in Path('.').rglob('*.lua'):
 print('All Lua files compile')
 lua.execute('''
 TrinketSwitcherFrame = {}
-TrinketSwitcherCharDB = {macroReadyGlowEnabled=true, readySoundEnabled=true, readySound="Chime", readySoundVolume=70, colors={macroReadyGlow={r=1,g=.8,b=0}}}
+TrinketSwitcherCharDB = {macroReadyGlowEnabled=true, readySoundEnabled=true, readySound="Chime", readySoundVolume=70, colors={macroReadySlot13={r=0,g=1,b=0},macroReadySlot14={r=0,g=.4,b=1},macroReadyBoth={r=1,g=.82,b=0}}}
 now=100; sounds=0; inventory={[13]=101,[14]=102}; cds={}; bodies={[1]="/use 13\\n/use 14",[2]="/use [combat] 13; [nocombat] 14",[3]="/use 130\\n/say /use 13"}
 function GetTime() return now end
 timers = {}
@@ -116,7 +116,7 @@ b.stateKind, b.stateAction = "macro", 1
 function b:GetAction() return self.stateKind, self.stateAction end
 a.macroButtons = {[b]=true}
 inventory[13]=101; cds[13]={0,0,1}
-TrinketSwitcherCharDB.colors.macroReadyGlow = {r=.1,g=.5,b=1}
+TrinketSwitcherCharDB.colors.macroReadySlot13 = {r=.1,g=.5,b=1}
 function b:CreateTexture()
  local t={}
  function t:SetTexture(path) self.path=path end
@@ -147,7 +147,7 @@ cds[13]={0,0,1}
 a:UpdateReadyAlerts(); assert(b.tsMacroReadyGlow.shown)
 local starts=b.tsMacroReadyGlow.starts
 a:UpdateReadyAlerts(); assert(b.tsMacroReadyGlow.starts==starts)
-TrinketSwitcherCharDB.colors.macroReadyGlow.r=.7
+TrinketSwitcherCharDB.colors.macroReadySlot13.r=.7
 a:UpdateReadyAlerts(); assert(b.tsMacroReadyGlow.r==.7)
 TrinketSwitcherCharDB.macroReadyGlowEnabled=false
 a:UpdateReadyAlerts(); assert(not b.tsMacroReadyGlow.shown)
@@ -224,3 +224,54 @@ for i=1,100 do a.readyAlertFrame.scripts.OnEvent(nil,"ACTIONBAR_UPDATE_COOLDOWN"
 now=now+100; RunTimers(); assert(inventoryReads==disabledReads)
 ''')
 print('Passed: no idle polling, 100-event coalescing, cached macro/action reads, macro-edit invalidation, timer-only readiness sound, and disabled idle work')
+
+lua.execute('''
+local a,b,db=TrinketSwitcherFrame,buttons[3],TrinketSwitcherCharDB
+-- Exercise both styles through every dual-slot readiness combination.
+function b:CreateTexture()
+ local t={}
+ function t:SetTexture(path) self.path=path end
+ function t:SetBlendMode(mode) self.blend=mode end
+ function t:ClearAllPoints() self.points={} end
+ function t:SetPoint(...) self.points[#self.points+1]={...} end
+ function t:SetVertexColor(r,g,b,alpha) self.r,self.g,self.b,self.alpha=r,g,b,alpha end
+ function t:Show() self.shown=true end
+ function t:Hide() self.shown=false end
+ return t
+end
+bodies[1]="/use 13\\n/use 14"; a.readyMacroCache=nil
+inventory[13]=101; inventory[14]=102
+local function checkColor(glow,c)
+ assert(glow.shown and glow.r==c.r and glow.g==c.g and glow.b==c.b)
+end
+for _,style in ipairs({"MOVING","STEADY"}) do
+ db.macroReadyGlowStyle=style; db.macroReadyGlowEnabled=true
+ for _,state in ipairs({{true,true},{true,false},{false,true},{false,false}}) do
+  cds[13]=state[1] and {0,0,1} or {now,30,1}
+  cds[14]=state[2] and {0,0,1} or {now,30,1}
+  a:UpdateReadyAlerts()
+  local glow=style=="STEADY" and b.tsMacroReadySteadyGlow or b.tsMacroReadyGlow
+  if state[1] or state[2] then
+   checkColor(glow,state[1] and (state[2] and db.colors.macroReadyBoth or db.colors.macroReadySlot13) or db.colors.macroReadySlot14)
+  else assert(not glow.shown and not b.tsMacroReadyGlowColor) end
+ end
+end
+cds[13]={0,0,1}; cds[14]={0,0,1}; a:UpdateReadyAlerts()
+local glow=b.tsMacroReadySteadyGlow
+assert(glow.path=="Interface/Buttons/UI-ActionButton-Border" and glow.blend=="ADD")
+assert(not glow.scripts and not glow.animations)
+local oldSpread=glow.points[1][4]
+db.macroReadyGlowWidth=10; a:UpdateReadyAlerts(); assert(glow.points[1][4]<oldSpread)
+db.colors.macroReadyBoth={r=.3,g=.6,b=.9}; a:UpdateReadyAlerts(); checkColor(glow,db.colors.macroReadyBoth)
+db.macroReadyGlowStyle="MOVING"; a:UpdateReadyAlerts(); assert(not glow.shown and b.tsMacroReadyGlow.shown)
+db.macroReadyGlowStyle="STEADY"; a:UpdateReadyAlerts(); assert(glow.shown and not b.tsMacroReadyGlow.shown)
+b.visible=false; a:UpdateReadyAlerts(); assert(not glow.shown)
+b.visible=true; a:UpdateReadyAlerts(); assert(glow.shown)
+db.macroReadyGlowEnabled=false; a:UpdateReadyAlerts(); assert(not glow.shown)
+db.macroReadyGlowEnabled=true; a:UpdateReadyAlerts(); assert(glow.shown)
+db.macroReadyGlowEnabled=false; db.readySoundEnabled=false; a:UpdateReadyAlerts(); assert(not glow.shown)
+-- A one-slot macro only reflects its own readiness, even when both are ready.
+db.macroReadyGlowEnabled=true; bodies[1]="/use 14"; a.readyMacroCache=nil
+a:UpdateReadyAlerts(); checkColor(glow,db.colors.macroReadySlot14)
+''')
+print('Passed: both glow styles, all dual-slot states, static texture/spread/tint, style switching, hidden buttons, toggle cleanup, and single-slot colors')

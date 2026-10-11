@@ -4,6 +4,30 @@ local glowLibrary = LibStub("LibCustomGlow-1.0")
 local glowKey = "TrinketSwitcherReady"
 ATS.readySounds = {"Chime", "Bell", "Pulse"}
 
+local function StopReadyGlow(button)
+    glowLibrary.PixelGlow_Stop(button, glowKey)
+    if button.tsMacroReadySteadyGlow then button.tsMacroReadySteadyGlow:Hide() end
+    button.tsMacroReadyGlowColor = nil
+end
+
+local function ShowSteadyGlow(button, color, width)
+    local glow = button.tsMacroReadySteadyGlow
+    if not glow then
+        glow = button:CreateTexture(nil, "OVERLAY", nil, 7)
+        glow:SetTexture("Interface/Buttons/UI-ActionButton-Border")
+        glow:SetBlendMode("ADD")
+        button.tsMacroReadySteadyGlow = glow
+    end
+    -- This texture has transparent margins; enlarge it to place its luminous
+    -- border around the button, then increase the spread with the width setting.
+    local spread = 6 + width * 2
+    glow:ClearAllPoints()
+    glow:SetPoint("TOPLEFT", button, "TOPLEFT", -spread, spread)
+    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", spread, -spread)
+    glow:SetVertexColor(color.r, color.g, color.b, 0.8)
+    glow:Show()
+end
+
 function ATS:PlayReadySound()
     local db = TrinketSwitcherCharDB
     local name = db.readySound
@@ -114,8 +138,7 @@ function ATS:UpdateReadyAlerts()
     if not (db.macroReadyGlowEnabled or db.readySoundEnabled) then
         for button in pairs(self.macroButtons or {}) do
             if not button:IsForbidden() and button.tsMacroReadyGlowColor then
-                glowLibrary.PixelGlow_Stop(button, glowKey)
-                button.tsMacroReadyGlowColor = nil
+                StopReadyGlow(button)
             end
         end
         self.readyAlertState = nil
@@ -168,34 +191,44 @@ function ATS:UpdateReadyAlerts()
     self.readyMacroCache = self.readyMacroCache or {}
     self.readyActionCache = self.readyActionCache or {}
     local macros = self.readyMacroCache
-    local color = db.colors.macroReadyGlow
+    local style = db.macroReadyGlowStyle == "STEADY" and "STEADY" or "MOVING"
     local width = math.max(1, math.min(10, math.floor((tonumber(db.macroReadyGlowWidth) or 2) + 0.5)))
     for button in pairs(self.macroButtons or {}) do
         -- A previously discovered button can become forbidden later.
         if button:IsForbidden() then
             self.macroButtons[button] = nil
         else
-            local show = false
+            local color
             if db.macroReadyGlowEnabled and button:IsVisible() then
                 local id = ButtonMacroID(button, self.readyActionCache)
                 if id then
                     if not macros[id] then macros[id] = MacroSlots(GetMacroBody(id)) end
-                    for slot in pairs(macros[id]) do
-                        if ready[slot] then show = true end
+                    local ready13 = macros[id][13] and ready[13]
+                    local ready14 = macros[id][14] and ready[14]
+                    if ready13 and ready14 then
+                        color = db.colors.macroReadyBoth
+                    elseif ready13 then
+                        color = db.colors.macroReadySlot13
+                    elseif ready14 then
+                        color = db.colors.macroReadySlot14
                     end
                 end
             end
             local previous = button.tsMacroReadyGlowColor
-            if show then
-                if not previous or previous.r ~= color.r or previous.g ~= color.g or previous.b ~= color.b or previous.width ~= width then
+            if color then
+                if not previous or previous.r ~= color.r or previous.g ~= color.g or previous.b ~= color.b or previous.width ~= width or previous.style ~= style then
+                    StopReadyGlow(button)
                     -- Use a private key so other addons' proc glows stay independent.
-                    glowLibrary.PixelGlow_Start(button, {color.r, color.g, color.b, 1},
-                        8, 0.25, nil, width, 0, 0, false, glowKey)
-                    button.tsMacroReadyGlowColor = {r = color.r, g = color.g, b = color.b, width = width}
+                    if style == "STEADY" then
+                        ShowSteadyGlow(button, color, width)
+                    else
+                        glowLibrary.PixelGlow_Start(button, {color.r, color.g, color.b, 1},
+                            8, 0.25, nil, width, 0, 0, false, glowKey)
+                    end
+                    button.tsMacroReadyGlowColor = {r = color.r, g = color.g, b = color.b, width = width, style = style}
                 end
             elseif previous then
-                glowLibrary.PixelGlow_Stop(button, glowKey)
-                button.tsMacroReadyGlowColor = nil
+                StopReadyGlow(button)
             end
         end
     end

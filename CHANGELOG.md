@@ -2,6 +2,12 @@
 
 All notable changes to TrinketSwitcher are documented here.
 
+## v1.0.5 - 2026-10-14
+
+### Fixed
+- Fixed repeated aura lookup errors when opening edit mode on Classic beta clients with a missing aura name lookup API.
+- Detect active trinket buffs using available direct aura APIs, with indexed and legacy lookup fallbacks.
+
 ## v1.0.4 - 2026-10-11
 
 ### Added

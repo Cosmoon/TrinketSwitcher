@@ -547,12 +547,22 @@ local function IsItemEffectActive(itemID)
     local spellName = GetItemUseSpellName(itemID)
     if not spellName then return false end
 
-    if AuraUtil and AuraUtil.FindAuraByName then
-        return AuraUtil.FindAuraByName(spellName, "player", "HELPFUL") ~= nil
+    -- AuraUtil can exist on Classic even when its name lookup API is missing.
+    -- Check the underlying APIs directly instead of using that wrapper.
+    if C_UnitAuras and C_UnitAuras.GetAuraDataBySpellName then
+        return C_UnitAuras.GetAuraDataBySpellName("player", spellName, "HELPFUL") ~= nil
     end
 
     for i = 1, 40 do
-        local name = UnitBuff("player", i)
+        local name
+        if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+            local aura = C_UnitAuras.GetAuraDataByIndex("player", i, "HELPFUL")
+            name = aura and aura.name
+        elseif UnitBuff then
+            name = UnitBuff("player", i)
+        else
+            break
+        end
         if not name then break end
         if name == spellName then return true end
     end
